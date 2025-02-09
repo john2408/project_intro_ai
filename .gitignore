@@ -1,6 +1,11 @@
 
 # Mac OS-specific storage files
 .DS_Store
+.venv_models
+.venv_dl
+lightning_logs/
+saved_models/
+.pt_tmp/
 
 # vim
 *.swp
