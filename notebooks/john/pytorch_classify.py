@@ -76,7 +76,7 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
     trainer_config = TrainerConfig(
         #     auto_lr_find=True, # Runs the LRFinder to automatically derive a learning rate
         batch_size=32,
-        max_epochs=10,
+        max_epochs=30,
         early_stopping="valid_loss",  # Monitor valid_loss for early stopping
         early_stopping_mode="min",  # Set the mode as min because for val_loss, lower is better
         early_stopping_patience=5,  # No. of epochs of degradation training will wait before terminating
@@ -125,6 +125,7 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
     f1_score_result = f1_score(y_test, y_pred)
     accuracy_score_result = accuracy_score(y_test, y_pred)
     
+    print("F1 score: ", f1_score_result)
     print(f"Acurracy Score: {accuracy_score_result}")   
     print(f"Classification Report: {class_report}")
     
