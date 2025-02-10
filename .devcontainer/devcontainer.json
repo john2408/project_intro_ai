@@ -1,0 +1,39 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://github.com/microsoft/vscode-dev-containers/tree/v0.245.2/containers/docker-existing-dockerfile
+{
+	"name": "Project Data Analytics Development Container",
+
+    // Sets the run context to one level up instead of the .devcontainer folder.
+    // Update the 'dockerFile' property if you aren't using the standard 'dockerfile' filename.
+    "build": {
+        "dockerfile": "../Dockerfile",
+        "context": ".."
+    },
+    // Set *default* container specific settings.json values on container create.
+    "customizations": {
+        "vscode": {
+            // Add the IDs of extensions you want installed when the container is created.
+            "extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"eamodio.gitlens",
+				"redhat.vscode-yaml",
+				"alexcvzz.vscode-sqlite",
+				"ms-python.isort",
+				"ms-python.flake8",
+				"ms-toolsai.jupyter",
+				"ms-python.black-formatter",
+				"tamasfe.even-better-toml"
+			],
+            "settings": {
+                "python.pythonPath": "/usr/local/bin/python",
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "/bin/bash"
+                    }
+                }
+            }
+        }
+    } // ,
+}
