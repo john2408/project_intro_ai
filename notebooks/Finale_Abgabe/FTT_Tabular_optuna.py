@@ -15,6 +15,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score, a
 from omegaconf import DictConfig
 import pickle
 import optuna
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 torch.serialization.safe_globals([DictConfig])
 
 # Adjust Function pytorch_tabular/utils/python_utils.py
@@ -48,9 +49,14 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
                           num_cols: list[str], 
                           cat_cols: list[str],
                           target_col: list[str],
+                          apply_standard_scaler: bool = False,
                           n_opt_trials: int = 10,
                           random_seed: int = 123) -> tuple:
    
+   
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+    
     train, val = train_test_split(df_train, test_size=0.2, random_state=random_seed)
     
     val_x = val.drop(columns=['user_of_latest_model'])  # Features
@@ -58,6 +64,21 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
     
     X_test = df_test.drop(columns=['user_of_latest_model'])  # Features
     y_test = df_test['user_of_latest_model']  # Target variable
+    
+    if apply_standard_scaler:
+        
+        # Scaler for Model Training
+        scaler = MinMaxScaler()
+        scaler.fit(train)    
+        train = pd.DataFrame(scaler.transform(train), columns=train.columns)
+        val = pd.DataFrame(scaler.transform(val), columns=val.columns)
+        
+        # Scaler for Optuna
+        scaler_opt = MinMaxScaler()
+        scaler_opt.fit(df_train.drop(columns=['user_of_latest_model']))
+        val_x = pd.DataFrame(scaler_opt.transform(val_x), columns=val_x.columns)
+        X_test = pd.DataFrame(scaler_opt.transform(X_test), columns=X_test.columns)
+        
 
     data_config = DataConfig(
             target=target_col,  # target should always be a list.
@@ -69,12 +90,12 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
         
         learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
         num_heads = trial.suggest_categorical("num_heads", [4, 8, 16]) 
-        num_attn_blocks = trial.suggest_int("num_attn_blocks", 1, 4)
-        
+        num_attn_blocks = trial.suggest_categorical("num_attn_blocks", [4, 6, 8])
+        batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
         
         trainer_config = TrainerConfig(
             #     auto_lr_find=True, # Runs the LRFinder to automatically derive a learning rate
-            batch_size=32,
+            batch_size=batch_size,
             max_epochs=30,
             early_stopping="valid_loss",  # Monitor valid_loss for early stopping
             early_stopping_mode="min",  # Set the mode as min because for val_loss, lower is better
@@ -122,7 +143,7 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
 
     trainer_config = TrainerConfig(
         #     auto_lr_find=True, # Runs the LRFinder to automatically derive a learning rate
-        batch_size=32,
+        batch_size=best_params['batch_size'],
         max_epochs=30,
         early_stopping="valid_loss",  # Monitor valid_loss for early stopping
         early_stopping_mode="min",  # Set the mode as min because for val_loss, lower is better
@@ -181,6 +202,7 @@ if __name__ == "__main__":
     target_columns = ['user_of_latest_model']
 
     models_metrics = {} 
+    
 
     # Store the dataframe to use them in the next step
     df_train = pd.read_csv(os.path.join(os.getcwd(),"data/processed/task2_best_model_step3_train_data.csv"))
@@ -188,22 +210,32 @@ if __name__ == "__main__":
 
 
     # OneHot-Encoding for categorical columns
-    df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True)
-    df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True)
+    df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
+    df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
 
     features = df_train.columns.to_list()
     features.remove('user_of_latest_model')
     cat_cols = [col for col in features if "_cat" in col]
     num_cols = [col for col in features if "_cat" not in col]
 
+
+    apply_standard_scaler = True
+    n_opt_trials = 10
     df_results = train_test_ft_tabular(df_train=df_train, 
                                 df_test=df_test, 
                                 num_cols=num_cols, 
                                 cat_cols=cat_cols,
-                                target_col=target_columns)
+                                target_col=target_columns, 
+                                apply_standard_scaler=apply_standard_scaler,
+                                n_opt_trials=n_opt_trials)
     
     print(df_results)
     
     # Store results as pkl
-    with open(os.path.join(os.getcwd(), "data/processed/ftt_model_results_optuna.pkl"), "wb") as f:
+    
+    file_name = "data/processed/ftt_model_results_optuna_new.pkl"
+    if apply_standard_scaler: 
+        file_name = "data/processed/ftt_model_results_optuna_scaler.pkl"
+        
+    with open(os.path.join(os.getcwd(), file_name), "wb") as f:
         pickle.dump(df_results, f)
