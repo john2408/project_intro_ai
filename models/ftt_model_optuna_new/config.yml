@@ -59,13 +59,13 @@ head: LinearHead
 head_config:
   layers: ''
   activation: ReLU
-  dropout: 0.1
+  dropout: 0.05
   use_batch_norm: false
   initialization: kaiming
 embedding_dims: null
 embedding_dropout: 0.0
 batch_norm_continuous_input: true
-learning_rate: 0.00014291789065394372
+learning_rate: 2.2588429949128506e-05
 loss: CrossEntropyLoss
 metrics:
 - accuracy
@@ -95,7 +95,7 @@ add_norm_dropout: 0.1
 ff_dropout: 0.1
 ff_hidden_multiplier: 4
 transformer_activation: GEGLU
-batch_size: 16
+batch_size: 32
 data_aware_init_batch_size: 2000
 fast_dev_run: false
 max_epochs: 30
@@ -129,7 +129,7 @@ track_grad_norm: -1
 progress_bar: rich
 precision: 32
 trainer_kwargs: {}
-optimizer: Adam
+optimizer: AdamW
 optimizer_params: {}
 lr_scheduler: null
 lr_scheduler_params: {}

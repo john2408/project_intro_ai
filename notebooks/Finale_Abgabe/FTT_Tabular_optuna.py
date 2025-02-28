@@ -255,7 +255,7 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
 
     head_config = LinearHeadConfig(
         layers="",  # No additional layer in head, just a mapping layer to output_dim
-        dropout=0.1,
+        dropout=0.05,
         initialization="kaiming",
     ).__dict__ 
 
@@ -328,8 +328,8 @@ if __name__ == "__main__":
     num_cols = [col for col in features if "_cat" not in col]
 
 
-    apply_standard_scaler = True
-    n_opt_trials = 20
+    apply_standard_scaler = False
+    n_opt_trials = 10
     df_results, tabular_model, best_params = train_test_ft_tabular(df_train=df_train, 
                                 df_test=df_test, 
                                 num_cols=num_cols, 
