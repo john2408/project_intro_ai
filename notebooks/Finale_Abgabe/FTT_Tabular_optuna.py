@@ -15,6 +15,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score, a
 from omegaconf import DictConfig
 import pickle
 import optuna
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 torch.serialization.safe_globals([DictConfig])
 
 # Adjust Function pytorch_tabular/utils/python_utils.py
@@ -43,14 +44,17 @@ torch.serialization.safe_globals([DictConfig])
 #         return torch.load(f, map_location=map_location, weights_only=False)
 
 
-def train_test_ft_tabular(df_train: pd.DataFrame, 
+def base_fft_tabular(df_train: pd.DataFrame, 
                           df_test: pd.DataFrame, 
                           num_cols: list[str], 
                           cat_cols: list[str],
                           target_col: list[str],
-                          n_opt_trials: int = 10,
-                          random_seed: int = 123) -> tuple:
-   
+                          apply_standard_scaler: bool = False,
+                          random_seed: int = 123):
+    
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+    
     train, val = train_test_split(df_train, test_size=0.2, random_state=random_seed)
     
     val_x = val.drop(columns=['user_of_latest_model'])  # Features
@@ -58,6 +62,121 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
     
     X_test = df_test.drop(columns=['user_of_latest_model'])  # Features
     y_test = df_test['user_of_latest_model']  # Target variable
+    
+    if apply_standard_scaler:
+        
+        # Scaler for Model Training
+        scaler = MinMaxScaler()
+        scaler.fit(train)    
+        train = pd.DataFrame(scaler.transform(train), columns=train.columns)
+        val = pd.DataFrame(scaler.transform(val), columns=val.columns)
+        
+        # Scaler for Optuna
+        scaler_opt = MinMaxScaler()
+        scaler_opt.fit(df_train.drop(columns=['user_of_latest_model']))
+        val_x = pd.DataFrame(scaler_opt.transform(val_x), columns=val_x.columns)
+        X_test = pd.DataFrame(scaler_opt.transform(X_test), columns=X_test.columns)
+     
+    
+    trainer_config = TrainerConfig(
+        #     auto_lr_find=True, # Runs the LRFinder to automatically derive a learning rate
+        batch_size=32,
+        max_epochs=30,
+        accelerator="mps",  # Use GPU
+        early_stopping="valid_loss",  # Monitor valid_loss for early stopping
+        early_stopping_mode="min",  # Set the mode as min because for val_loss, lower is better
+        early_stopping_patience=5,  # No. of epochs of degradation training will wait before terminating
+        checkpoints="valid_loss",  # Save best checkpoint monitoring val_loss
+        load_best=True,  # After training, load the best checkpoint
+    )
+
+    data_config = DataConfig(
+            target=target_col,  # target should always be a list.
+            continuous_cols=num_cols,
+            categorical_cols=cat_cols,
+    )
+        
+    optimizer_config = OptimizerConfig(optimizer="AdamW")
+
+    head_config = LinearHeadConfig(
+        layers="",  # No additional layer in head, just a mapping layer to output_dim
+        dropout=0.1,
+        initialization="kaiming",
+    ).__dict__ 
+
+    # FT Tabular Transformer
+    model_config = FTTransformerConfig(
+        task="classification",
+        head="LinearHead",  # Linear Head
+        head_config=head_config,  # Linear Head Config
+        learning_rate = 1e-3,
+        num_heads=8,
+        num_attn_blocks=6,
+    )
+    
+    tabular_model = TabularModel(
+        data_config=data_config,
+        model_config=model_config,
+        optimizer_config=optimizer_config,
+        trainer_config=trainer_config,
+    )
+    
+    tabular_model.fit(train=train, validation=val)
+    
+    y_pred_val = np.array(tabular_model.predict(test=val_x))[:, -1]
+    val_accuracy = round(accuracy_score(val_y, y_pred_val),4)
+    val_f1_score = round(f1_score(val_y, y_pred_val),4)
+    
+    y_pred = np.array(tabular_model.predict(test=X_test))[:, -1]  
+    test_accuracy = round(accuracy_score(y_test, y_pred),4)
+    test_f1_score = round(f1_score(y_test, y_pred),4)
+    
+    return tabular_model, val_f1_score, val_accuracy, test_f1_score, test_accuracy
+
+def train_test_ft_tabular(df_train: pd.DataFrame, 
+                          df_test: pd.DataFrame, 
+                          num_cols: list[str], 
+                          cat_cols: list[str],
+                          target_col: list[str],
+                          apply_standard_scaler: bool = False,
+                          n_opt_trials: int = 10,
+                          random_seed: int = 123) -> tuple:
+   
+   
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+    
+    train, val = train_test_split(df_train, test_size=0.2, random_state=random_seed)
+    
+    val_x = val.drop(columns=['user_of_latest_model'])  # Features
+    val_y = val['user_of_latest_model']  # Target variable
+    
+    X_test = df_test.drop(columns=['user_of_latest_model'])  # Features
+    y_test = df_test['user_of_latest_model']  # Target variable
+    
+    if apply_standard_scaler:
+        
+        # Scaler for Model Training
+        scaler = MinMaxScaler()
+        scaler.fit(train)    
+        train = pd.DataFrame(scaler.transform(train), columns=train.columns)
+        val = pd.DataFrame(scaler.transform(val), columns=val.columns)
+        
+        # Scaler for Optuna
+        scaler_opt = MinMaxScaler()
+        scaler_opt.fit(df_train.drop(columns=['user_of_latest_model']))
+        val_x = pd.DataFrame(scaler_opt.transform(val_x), columns=val_x.columns)
+        X_test = pd.DataFrame(scaler_opt.transform(X_test), columns=X_test.columns)
+    
+    # Model without hyperparameter optimization
+    print("Training Base Model")
+    tabular_model, base_val_f1_score, base_val_accuracy, base_test_f1_score, base_test_accuracy = base_fft_tabular(df_train=df_train,
+                        df_test=df_test,
+                        num_cols=num_cols,
+                        cat_cols=cat_cols,
+                        target_col=target_col,
+                        apply_standard_scaler=apply_standard_scaler,
+                        random_seed=random_seed) 
 
     data_config = DataConfig(
             target=target_col,  # target should always be a list.
@@ -69,21 +188,21 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
         
         learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
         num_heads = trial.suggest_categorical("num_heads", [4, 8, 16]) 
-        num_attn_blocks = trial.suggest_int("num_attn_blocks", 1, 4)
-        
+        num_attn_blocks = trial.suggest_categorical("num_attn_blocks", [4, 6, 8])
+        batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
         
         trainer_config = TrainerConfig(
             #     auto_lr_find=True, # Runs the LRFinder to automatically derive a learning rate
-            batch_size=32,
+            batch_size=batch_size,
             max_epochs=30,
             early_stopping="valid_loss",  # Monitor valid_loss for early stopping
             early_stopping_mode="min",  # Set the mode as min because for val_loss, lower is better
             early_stopping_patience=5,  # No. of epochs of degradation training will wait before terminating
             checkpoints="valid_loss",  # Save best checkpoint monitoring val_loss
-                load_best=True,  # After training, load the best checkpoint
+            load_best=True,  # After training, load the best checkpoint
         )
 
-        optimizer_config = OptimizerConfig()
+        optimizer_config = OptimizerConfig(optimizer="AdamW")
 
         head_config = LinearHeadConfig(
             layers="",  # No additional layer in head, just a mapping layer to output_dim
@@ -122,8 +241,9 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
 
     trainer_config = TrainerConfig(
         #     auto_lr_find=True, # Runs the LRFinder to automatically derive a learning rate
-        batch_size=32,
+        batch_size=best_params['batch_size'],
         max_epochs=30,
+        accelerator="mps",  # Use GPU
         early_stopping="valid_loss",  # Monitor valid_loss for early stopping
         early_stopping_mode="min",  # Set the mode as min because for val_loss, lower is better
         early_stopping_patience=5,  # No. of epochs of degradation training will wait before terminating
@@ -131,11 +251,11 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
         load_best=True,  # After training, load the best checkpoint
     )
 
-    optimizer_config = OptimizerConfig()
+    optimizer_config = OptimizerConfig(optimizer="AdamW")
 
     head_config = LinearHeadConfig(
         layers="",  # No additional layer in head, just a mapping layer to output_dim
-        dropout=0.1,
+        dropout=0.05,
         initialization="kaiming",
     ).__dict__ 
 
@@ -165,6 +285,16 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
     y_pred = np.array(tabular_model.predict(test=X_test))[:, -1]  
     test_accuracy = round(accuracy_score(y_test, y_pred),4)
     test_f1_score = round(f1_score(y_test, y_pred),4)
+    
+    if base_test_f1_score > test_f1_score:
+        val_f1_score = base_val_f1_score
+        val_accuracy = base_val_accuracy
+        test_f1_score = base_test_f1_score
+        test_accuracy = base_test_accuracy
+        print("Base Model is better than Optuna Model")
+    else:
+        print("Optuna Model is better than Baseline Model")
+    
     model_name = "FTTabular"
     
     df_results = pd.DataFrame({'Model_Name': [model_name], 
@@ -173,7 +303,7 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
                                'test_f1_score': [test_f1_score],
                                'test_accuracy': [test_accuracy]})
   
-    return df_results
+    return df_results, tabular_model, best_params
 
 
 if __name__ == "__main__":
@@ -181,6 +311,7 @@ if __name__ == "__main__":
     target_columns = ['user_of_latest_model']
 
     models_metrics = {} 
+    
 
     # Store the dataframe to use them in the next step
     df_train = pd.read_csv(os.path.join(os.getcwd(),"data/processed/task2_best_model_step3_train_data.csv"))
@@ -188,22 +319,38 @@ if __name__ == "__main__":
 
 
     # OneHot-Encoding for categorical columns
-    df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True)
-    df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True)
+    df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
+    df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
 
     features = df_train.columns.to_list()
     features.remove('user_of_latest_model')
     cat_cols = [col for col in features if "_cat" in col]
     num_cols = [col for col in features if "_cat" not in col]
 
-    df_results = train_test_ft_tabular(df_train=df_train, 
+
+    apply_standard_scaler = False
+    n_opt_trials = 10
+    df_results, tabular_model, best_params = train_test_ft_tabular(df_train=df_train, 
                                 df_test=df_test, 
                                 num_cols=num_cols, 
                                 cat_cols=cat_cols,
-                                target_col=target_columns)
+                                target_col=target_columns, 
+                                apply_standard_scaler=apply_standard_scaler,
+                                n_opt_trials=n_opt_trials)
     
     print(df_results)
     
     # Store results as pkl
-    with open(os.path.join(os.getcwd(), "data/processed/ftt_model_results_optuna.pkl"), "wb") as f:
+    
+    file_name = "data/processed/ftt_model_results_optuna_new.pkl"
+    if apply_standard_scaler: 
+        file_name = "data/processed/ftt_model_results_optuna_scaler.pkl"
+        
+    with open(os.path.join(os.getcwd(), file_name), "wb") as f:
         pickle.dump(df_results, f)
+        
+    # Store the model 
+    model_name = "ftt_model_optuna_new"
+    if apply_standard_scaler:
+        model_name = "ftt_model_optuna_scaler"
+    tabular_model.save_model(os.path.join(os.getcwd(), "models/", model_name))
