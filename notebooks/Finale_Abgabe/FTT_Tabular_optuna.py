@@ -311,22 +311,42 @@ if __name__ == "__main__":
     target_columns = ['user_of_latest_model']
 
     models_metrics = {} 
-    
 
+    data_type = "full_preprocessed_data" # full_preprocessed_data, step3, step4
     # Store the dataframe to use them in the next step
-    df_train = pd.read_csv(os.path.join(os.getcwd(),"data/processed/task2_best_model_step3_train_data.csv"))
-    df_test = pd.read_csv(os.path.join(os.getcwd(),"data/processed/task2_best_model_step3_test_data.csv"))
+    if data_type == "step3":
+        path_train_data = "data/processed/task2_best_model_step3_train_data.csv"
+        path_test_data = "data/processed/task2_best_model_step3_test_data.csv"
+    elif data_type == "full_preprocessed_data":
+        path_train_data = "data/processed/triathlon_watch_training_data_final_preprocessed.csv"
+        path_test_data = "data/processed/triathlon_watch_test_data_final_preprocessed.csv"
+        
+    df_train = pd.read_csv(os.path.join(os.getcwd(),path_train_data))
+    df_test = pd.read_csv(os.path.join(os.getcwd(),path_test_data))
 
-
+    # Replace "Missing" Word with Missing_ColName
+    # This is done to avoid issues with OneHot-Encoding and duplicated columns
+    for col in df_train.select_dtypes(include=['object']).columns.to_list():
+        if 'Missing' in df_train[col].unique():
+            df_train[col] = df_train[col].replace('Missing', f'{col}_Missing')
+            df_test[col] = df_test[col].replace('Missing', f'{col}_Missing')
+            
     # OneHot-Encoding for categorical columns
     df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
     df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
 
+    # Align columns in train & test to avoid mismatch issues
+    # This is due to the fact that some categories in the train data may not be present in the test data
+    # Example: 
+    # - subscription_type_Missing
+    # - town_Missing
+    if data_type == "full_preprocessed_data":
+        df_train, df_test = df_train.align(df_test, join='left', axis=1, fill_value=0)
+    
     features = df_train.columns.to_list()
     features.remove('user_of_latest_model')
     cat_cols = [col for col in features if "_cat" in col]
     num_cols = [col for col in features if "_cat" not in col]
-
 
     apply_standard_scaler = False
     n_opt_trials = 10
@@ -341,16 +361,15 @@ if __name__ == "__main__":
     print(df_results)
     
     # Store results as pkl
-    
-    file_name = "data/processed/ftt_model_results_optuna_new.pkl"
+    file_name = f"data/processed/ftt_model_results_optuna_{data_type}.pkl"
     if apply_standard_scaler: 
-        file_name = "data/processed/ftt_model_results_optuna_scaler.pkl"
+        file_name = f"data/processed/ftt_model_results_optuna_scaler_{data_type}.pkl"
         
     with open(os.path.join(os.getcwd(), file_name), "wb") as f:
         pickle.dump(df_results, f)
         
     # Store the model 
-    model_name = "ftt_model_optuna_new"
+    model_name = f"ftt_model_optuna_{data_type}"
     if apply_standard_scaler:
-        model_name = "ftt_model_optuna_scaler"
+        model_name = f"ftt_model_optuna_scaler_{data_type}"
     tabular_model.save_model(os.path.join(os.getcwd(), "models/", model_name))
