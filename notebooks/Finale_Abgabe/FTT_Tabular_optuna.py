@@ -16,6 +16,7 @@ from omegaconf import DictConfig
 import pickle
 import optuna
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+import argparse
 torch.serialization.safe_globals([DictConfig])
 
 # Adjust Function pytorch_tabular/utils/python_utils.py
@@ -312,11 +313,20 @@ if __name__ == "__main__":
 
     models_metrics = {} 
 
-    data_type = "full_preprocessed_data" # full_preprocessed_data, step3, step4
+    #data_type = "step4" # full_preprocessed_data, step3, step4
+    #apply_standard_scaler = True
+    parser = argparse.ArgumentParser(description='Train and test FT Tabular model.')
+    parser.add_argument('--data_type', type=str, required=True, help='Type of data to use: full_preprocessed_data, step4')
+    parser.add_argument('--apply_standard_scaler', type=bool, default=False, help='Whether to apply standard scaler or not')
+    
+    args = parser.parse_args()
+    apply_standard_scaler = args.apply_standard_scaler
+    data_type = args.data_type
+    
     # Store the dataframe to use them in the next step
-    if data_type == "step3":
-        path_train_data = "data/processed/task2_best_model_step3_train_data.csv"
-        path_test_data = "data/processed/task2_best_model_step3_test_data.csv"
+    if data_type == "step4":
+        path_train_data = "data/processed/triathlon_watch_training_data_step4.csv"
+        path_test_data = "data/processed/triathlon_watch_test_data_step4.csv"
     elif data_type == "full_preprocessed_data":
         path_train_data = "data/processed/triathlon_watch_training_data_final_preprocessed.csv"
         path_test_data = "data/processed/triathlon_watch_test_data_final_preprocessed.csv"
@@ -348,7 +358,6 @@ if __name__ == "__main__":
     cat_cols = [col for col in features if "_cat" in col]
     num_cols = [col for col in features if "_cat" not in col]
 
-    apply_standard_scaler = False
     n_opt_trials = 10
     df_results, tabular_model, best_params = train_test_ft_tabular(df_train=df_train, 
                                 df_test=df_test, 
