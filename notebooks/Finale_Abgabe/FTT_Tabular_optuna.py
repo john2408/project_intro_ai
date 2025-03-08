@@ -134,7 +134,8 @@ def base_fft_tabular(df_train: pd.DataFrame,
     
     return tabular_model, val_f1_score, val_accuracy, test_f1_score, test_accuracy
 
-def train_test_ft_tabular(df_train: pd.DataFrame, 
+def train_test_ft_tabular(experiment_name: str,
+                        df_train: pd.DataFrame, 
                           df_test: pd.DataFrame, 
                           num_cols: list[str], 
                           cat_cols: list[str],
@@ -295,10 +296,9 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
         print("Base Model is better than Optuna Model")
     else:
         print("Optuna Model is better than Baseline Model")
+
     
-    model_name = "FTTabular"
-    
-    df_results = pd.DataFrame({'Model_Name': [model_name], 
+    df_results = pd.DataFrame({'Model_Name': [experiment_name], 
                                'val_f1_score': [val_f1_score], 
                                'val_accuracy': [val_accuracy], 
                                'test_f1_score': [test_f1_score],
@@ -310,18 +310,30 @@ def train_test_ft_tabular(df_train: pd.DataFrame,
 if __name__ == "__main__":
 
     target_columns = ['user_of_latest_model']
+    numeric_columns = ['age_of_customer', 'swimming_hours_per_week', 'biking_hours_per_week',
+       'running_hours_per_week', 'total_training_hours_per_week', 'vo2_max',
+       '10k_running_time_prediction', 'calories_burned_per_week',
+       'support_cases_of_customer', 'customer_years',
+       'most_current_software_update']
 
+    apply_standard_scaler = True
     models_metrics = {} 
 
     #data_type = "step4" # full_preprocessed_data, step3, step4
-    #apply_standard_scaler = True
+    
     parser = argparse.ArgumentParser(description='Train and test FT Tabular model.')
     parser.add_argument('--data_type', type=str, required=True, help='Type of data to use: full_preprocessed_data, step4')
-    parser.add_argument('--apply_standard_scaler', type=bool, default=False, help='Whether to apply standard scaler or not')
-    
+    parser.add_argument('--feat_selection_method', type=str, default='None', help='Feature selection method to use: None, RFE, Boruta')
     args = parser.parse_args()
-    apply_standard_scaler = args.apply_standard_scaler
     data_type = args.data_type
+    feat_selection_method = args.feat_selection_method
+    
+    # load pickle 
+    path = os.path.join(os.getcwd(),'models/feature_importance_cols.pkl')
+    with open(path, "rb") as f:
+        feature_importance_cols = pickle.load(f)
+        
+    selected_features = feature_importance_cols[feat_selection_method]  
     
     # Store the dataframe to use them in the next step
     if data_type == "step4":
@@ -340,10 +352,10 @@ if __name__ == "__main__":
         if 'Missing' in df_train[col].unique():
             df_train[col] = df_train[col].replace('Missing', f'{col}_Missing')
             df_test[col] = df_test[col].replace('Missing', f'{col}_Missing')
-            
+             
     # OneHot-Encoding for categorical columns
-    df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
-    df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True, dtype='int')
+    df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), drop_first=True, dtype='int')
+    df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), drop_first=True, dtype='int')
 
     # Align columns in train & test to avoid mismatch issues
     # This is due to the fact that some categories in the train data may not be present in the test data
@@ -352,14 +364,29 @@ if __name__ == "__main__":
     # - town_Missing
     if data_type == "full_preprocessed_data":
         df_train, df_test = df_train.align(df_test, join='left', axis=1, fill_value=0)
+
+
+    # Select only the features that are important
+    df_train = df_train[selected_features + target_columns].copy()
+    df_test = df_test[selected_features + target_columns].copy()
     
-    features = df_train.columns.to_list()
-    features.remove('user_of_latest_model')
-    cat_cols = [col for col in features if "_cat" in col]
-    num_cols = [col for col in features if "_cat" not in col]
+    missing_columns_train = set(selected_features) - set(df_train.columns)
+    missing_columns_test = set(selected_features) - set(df_test.columns)
+    
+    assert missing_columns_train==set(), print("Train Mising Columns", missing_columns_train)
+    assert missing_columns_test==set(), print("Test Mising Columns", missing_columns_test)
+    
+    # Select numeric and categorical columns
+    features = df_train.drop(columns=target_columns).columns.to_list()
+    cat_cols = list(set(features) - set(numeric_columns))
+    num_cols = list(set(numeric_columns) & set(features))
 
     n_opt_trials = 10
-    df_results, tabular_model, best_params = train_test_ft_tabular(df_train=df_train, 
+    model_name = "FTTabular"
+    experiment_name = model_name + " feat: " + feat_selection_method
+    df_results, tabular_model, best_params = train_test_ft_tabular(
+                                experiment_name=experiment_name,
+                                df_train=df_train, 
                                 df_test=df_test, 
                                 num_cols=num_cols, 
                                 cat_cols=cat_cols,
@@ -370,15 +397,10 @@ if __name__ == "__main__":
     print(df_results)
     
     # Store results as pkl
-    file_name = f"data/processed/ftt_model_results_optuna_{data_type}.pkl"
-    if apply_standard_scaler: 
-        file_name = f"data/processed/ftt_model_results_optuna_scaler_{data_type}.pkl"
-        
+    file_name = f"data/processed/ftt_model_results_optuna_{data_type}_{feat_selection_method}.pkl"
     with open(os.path.join(os.getcwd(), file_name), "wb") as f:
         pickle.dump(df_results, f)
         
     # Store the model 
-    model_name = f"ftt_model_optuna_{data_type}"
-    if apply_standard_scaler:
-        model_name = f"ftt_model_optuna_scaler_{data_type}"
+    model_name = f"ftt_model_optuna_{data_type}_{feat_selection_method}"
     tabular_model.save_model(os.path.join(os.getcwd(), "models/", model_name))
