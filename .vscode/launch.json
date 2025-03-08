@@ -4,13 +4,18 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
         {
-            "name": "Python Debugger: Current File",
+            "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "args": [
+                "--data_type",
+                "full_preprocessed_data",
+                "--feat_selection_method",
+                "mutual_info"
+            ]
         }
     ]
 }
