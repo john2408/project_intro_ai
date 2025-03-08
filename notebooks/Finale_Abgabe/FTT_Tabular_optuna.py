@@ -45,6 +45,28 @@ torch.serialization.safe_globals([DictConfig])
 #         return torch.load(f, map_location=map_location, weights_only=False)
 
 
+def generate_interaction_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Generate interaction features based on fitness and behavioral data.
+
+    Args:
+        df (pd.DataFrame): Input dataframe containing original features.
+
+    Returns:
+        pd.DataFrame: DataFrame with new interaction features.
+    """
+    df = df.copy()
+    
+    # Interaction Features
+    df['training_efficiency'] = df['vo2_max'] / df['10k_running_time_prediction']
+    df['training_intensity'] = df['total_training_hours_per_week'] / df['age_of_customer']
+    df['cardio_balance'] = (df['running_hours_per_week'] + df['biking_hours_per_week']) / df['total_training_hours_per_week']
+    df['calories_per_training_hour'] = df['calories_burned_per_week'] / df['total_training_hours_per_week']
+
+    # Handle potential NaNs from division
+    df.fillna(0, inplace=True)
+
+    return df
+
 def base_fft_tabular(df_train: pd.DataFrame, 
                           df_test: pd.DataFrame, 
                           num_cols: list[str], 
@@ -315,6 +337,15 @@ if __name__ == "__main__":
        '10k_running_time_prediction', 'calories_burned_per_week',
        'support_cases_of_customer', 'customer_years',
        'most_current_software_update']
+    
+    interaction_features = [
+        'training_efficiency',
+        'training_intensity',
+        'cardio_balance',
+        'calories_per_training_hour'
+    ]
+    
+    numeric_columns = numeric_columns + interaction_features
 
     apply_standard_scaler = True
     models_metrics = {} 
@@ -346,6 +377,10 @@ if __name__ == "__main__":
     df_train = pd.read_csv(os.path.join(os.getcwd(),path_train_data))
     df_test = pd.read_csv(os.path.join(os.getcwd(),path_test_data))
 
+    # Generate Interaction Features
+    df_train = generate_interaction_features(df_train)
+    df_test = generate_interaction_features(df_test)
+    
     # Replace "Missing" Word with Missing_ColName
     # This is done to avoid issues with OneHot-Encoding and duplicated columns
     for col in df_train.select_dtypes(include=['object']).columns.to_list():
