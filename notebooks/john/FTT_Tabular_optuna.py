@@ -186,7 +186,8 @@ if __name__ == "__main__":
     df_train = pd.read_csv(os.path.join(os.getcwd(),"data/processed/task2_best_model_step3_train_data.csv"))
     df_test = pd.read_csv(os.path.join(os.getcwd(),"data/processed/task2_best_model_step3_test_data.csv"))
 
-
+    assert df_test.shape[0] == 500, "Test Data is complete."
+    
     # OneHot-Encoding for categorical columns
     df_train = pd.get_dummies(df_train, columns=df_train.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True)
     df_test = pd.get_dummies(df_test, columns=df_test.select_dtypes(include=['object']).columns.to_list(), prefix="_cat", drop_first=True)

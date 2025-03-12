@@ -1,20 +1,20 @@
 target:
 - user_of_latest_model
 continuous_cols:
-- calories_per_training_hour
-- total_training_hours_per_week
-- support_cases_of_customer
-- running_hours_per_week
-- swimming_hours_per_week
-- calories_burned_per_week
-- age_of_customer
-- biking_hours_per_week
-- 10k_running_time_prediction
-- cardio_balance
-- training_efficiency
-- customer_years
 - most_current_software_update
+- running_hours_per_week
+- cardio_balance
+- age_of_customer
 - vo2_max
+- biking_hours_per_week
+- calories_burned_per_week
+- customer_years
+- calories_per_training_hour
+- 10k_running_time_prediction
+- support_cases_of_customer
+- swimming_hours_per_week
+- total_training_hours_per_week
+- training_efficiency
 - training_intensity
 categorical_cols:
 - ctry_USA
@@ -40,7 +40,7 @@ head_config:
 embedding_dims: null
 embedding_dropout: 0.0
 batch_norm_continuous_input: true
-learning_rate: 0.005929100025167665
+learning_rate: 8.666717810320283e-05
 loss: CrossEntropyLoss
 metrics:
 - accuracy
@@ -62,8 +62,8 @@ share_embedding: false
 share_embedding_strategy: fraction
 shared_embedding_fraction: 0.25
 attn_feature_importance: true
-num_heads: 4
-num_attn_blocks: 4
+num_heads: 16
+num_attn_blocks: 8
 transformer_head_dim: null
 attn_dropout: 0.1
 add_norm_dropout: 0.1
